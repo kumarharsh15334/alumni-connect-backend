@@ -1,8 +1,9 @@
-// alumni-connect-backend/routes/alumni.js
+//alumni-connect-backend/routes/alumni.js
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
 
+// GET /alumni?search=term
 router.get("/", async (req, res) => {
   const { search } = req.query;
   try {

@@ -3,7 +3,37 @@ const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
 
-// Get one profile by clerkUserId
+// 1) Search users (students or alumni) by name/company/college
+//    GET /profiles/search?q=term
+router.get("/search", async (req, res) => {
+  const { q } = req.query;
+  try {
+    const term = `%${q || ""}%`;
+    const { rows } = await pool.query(
+      `
+      SELECT
+        clerk_user_id    AS id,
+        first_name || ' ' || last_name AS name,
+        role,
+        profile_image    AS profileImageUrl
+      FROM profiles
+      WHERE first_name ILIKE $1
+         OR last_name  ILIKE $1
+         OR company    ILIKE $1
+         OR college    ILIKE $1
+      ORDER BY name
+      LIMIT 20
+      `,
+      [term]
+    );
+    res.json({ success: true, results: rows });
+  } catch (err) {
+    console.error("GET /profiles/search error:", err);
+    res.status(500).json({ success: false, error: "Database error" });
+  }
+});
+
+// 2) Get one profile by clerkUserId
 router.get("/:clerkUserId", async (req, res) => {
   const { clerkUserId } = req.params;
   try {
@@ -21,7 +51,7 @@ router.get("/:clerkUserId", async (req, res) => {
   }
 });
 
-// Create or update (upsert) a profile
+// 3) Create or update a profile
 router.post("/", async (req, res) => {
   const {
     clerkUserId, firstName, lastName, role,
@@ -76,7 +106,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Toggle availability
+// 4) Toggle availability
 router.patch("/:clerkUserId/availability", async (req, res) => {
   const { clerkUserId } = req.params;
   const { is_available } = req.body;
