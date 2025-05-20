@@ -1,4 +1,3 @@
-// alumni-connect-backend/routes/messages.js
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
@@ -16,32 +15,31 @@ async function lookupProfile(clerkUserId) {
 
 // GET /messages/:role/:clerkUserId/threads
 router.get("/:role/:clerkUserId/threads", async (req, res) => {
-  const { role, clerkUserId } = req.params;
+  const { clerkUserId } = req.params;
   try {
     const me = await lookupProfile(clerkUserId);
 
+    // find all peers
     const { rows: peers } = await pool.query(
-      `
-      SELECT DISTINCT
-        CASE
-          WHEN sender_id = $1 THEN receiver_id
-          ELSE sender_id
-        END AS peer_id
-      FROM messages
-      WHERE sender_id = $1 OR receiver_id = $1
-      `,
+      `SELECT DISTINCT
+         CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END AS peer_id
+       FROM messages
+       WHERE sender_id = $1 OR receiver_id = $1`,
       [me.id]
     );
 
     const threads = await Promise.all(
       peers.map(async ({ peer_id }) => {
+        // peer profile
         const peerQ = await pool.query(
           `SELECT clerk_user_id, first_name || ' ' || last_name AS full_name, profile_image
-             FROM profiles WHERE id = $1`,
+             FROM profiles
+            WHERE id = $1`,
           [peer_id]
         );
         const { clerk_user_id, full_name, profile_image } = peerQ.rows[0];
 
+        // last message
         const lastQ = await pool.query(
           `SELECT content, sent_at
              FROM messages
@@ -53,12 +51,23 @@ router.get("/:role/:clerkUserId/threads", async (req, res) => {
         );
         const last = lastQ.rows[0] || {};
 
+        // unread count
+        const unreadQ = await pool.query(
+          `SELECT COUNT(*) AS cnt
+             FROM messages
+            WHERE sender_id   = $1
+              AND receiver_id = $2
+              AND is_read     = FALSE`,
+          [peer_id, me.id]
+        );
+        const unread = parseInt(unreadQ.rows[0].cnt, 10);
+
         return {
           threadId: clerk_user_id,
           with: {
             id: clerk_user_id,
             name: full_name,
-            unread: 0,
+            unread,
             profileImageUrl: profile_image || ""
           },
           lastMessage: last.content || "",
@@ -74,23 +83,34 @@ router.get("/:role/:clerkUserId/threads", async (req, res) => {
   }
 });
 
-// GET a single thread’s messages
+// GET a single thread’s messages AND mark them read
 router.get("/:role/:clerkUserId/threads/:peerClerkId", async (req, res) => {
   const { clerkUserId, peerClerkId } = req.params;
   try {
     const me   = await lookupProfile(clerkUserId);
     const peer = await lookupProfile(peerClerkId);
 
+    // fetch conversation
     const { rows } = await pool.query(
       `SELECT
          p.clerk_user_id AS sender,
-         content AS body,
-         sent_at   AS timestamp
+         content            AS body,
+         sent_at            AS timestamp
        FROM messages m
-       JOIN profiles p ON p.id = m.sender_id
+       JOIN profiles p    ON p.id = m.sender_id
        WHERE (m.sender_id = $1 AND m.receiver_id = $2)
           OR (m.sender_id = $2 AND m.receiver_id = $1)
        ORDER BY sent_at`,
+      [me.id, peer.id]
+    );
+
+    // mark all peer→me messages read
+    await pool.query(
+      `UPDATE messages
+         SET is_read = TRUE
+       WHERE sender_id   = $2
+         AND receiver_id = $1
+         AND is_read     = FALSE`,
       [me.id, peer.id]
     );
 
