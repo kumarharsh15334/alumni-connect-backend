@@ -2,12 +2,10 @@ require("dotenv").config();
 const pool = require("./db");
 
 async function migrate() {
-  console.log("🔌 Connecting to NeonDB…");
+  console.log("🔌 Connecting to database…");
   await pool.connect();
 
   console.log("🛠️  Creating extension and tables…");
-
-  // UUID helper
   await pool.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
   // Profiles
@@ -37,7 +35,7 @@ async function migrate() {
     );
   `);
 
-  // Questions
+  // Q&A
   await pool.query(`
     CREATE TABLE IF NOT EXISTS questions (
       id        UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,8 +44,6 @@ async function migrate() {
       asked_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
     );
   `);
-
-  // Answers
   await pool.query(`
     CREATE TABLE IF NOT EXISTS answers (
       id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -58,7 +54,7 @@ async function migrate() {
     );
   `);
 
-  // Messages table (with is_read)
+  // Messages
   await pool.query(`
     CREATE TABLE IF NOT EXISTS messages (
       id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -70,10 +66,31 @@ async function migrate() {
     );
   `);
 
-  // If table existed already, ensure is_read column is present
+  // Services
   await pool.query(`
-    ALTER TABLE messages
-    ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE;
+    CREATE TABLE IF NOT EXISTS services (
+      id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+      alumni_id    UUID         REFERENCES profiles(id) ON DELETE CASCADE,
+      title        TEXT         NOT NULL,
+      description  TEXT,
+      rate         NUMERIC      NOT NULL,
+      created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+      updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+    );
+  `);
+
+  // Bookings
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bookings (
+      id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id   UUID         REFERENCES profiles(id) ON DELETE CASCADE,
+      alumni_id    UUID         REFERENCES profiles(id) ON DELETE CASCADE,
+      service_id   UUID         REFERENCES services(id) ON DELETE CASCADE,
+      booking_date DATE         NOT NULL,
+      booking_time TIME         NOT NULL,
+      status       TEXT         CHECK (status IN ('pending','confirmed','completed','cancelled')) NOT NULL DEFAULT 'pending',
+      created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+    );
   `);
 
   console.log("✅ Migrations complete!");
