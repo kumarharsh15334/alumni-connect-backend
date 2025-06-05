@@ -1,4 +1,4 @@
-// alumni-connect-backend/routes/profiles.js
+// ---- alumni-connect-backend/routes/profiles.js ----
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
@@ -51,28 +51,51 @@ router.get("/:clerkUserId", async (req, res) => {
   }
 });
 
-// 3) Create or update a profile
+// 3) Create or update a profile (DROP hourly_rate)
 router.post("/", async (req, res) => {
   const {
-    clerkUserId, firstName, lastName, role,
-    college, department, semester, company, industry,
-    graduationYear, experienceYears, hourlyRate,
-    skills, website, linkedinUrl, profileImage
+    clerkUserId,
+    firstName,
+    lastName,
+    role,
+    college,
+    department,
+    semester,
+    company,
+    industry,
+    graduationYear,
+    experienceYears,
+    // <-- hourlyRate removed here
+    skills,
+    website,
+    linkedinUrl,
+    profileImage,
   } = req.body;
 
   try {
     await pool.query(
       `
       INSERT INTO profiles (
-        clerk_user_id, first_name, last_name, role,
-        college, department, semester, company, industry,
-        graduation_year, experience_years, hourly_rate,
-        skills, website, linkedin_url, profile_image
+        clerk_user_id,
+        first_name,
+        last_name,
+        role,
+        college,
+        department,
+        semester,
+        company,
+        industry,
+        graduation_year,
+        experience_years,
+        skills,
+        website,
+        linkedin_url,
+        profile_image
       ) VALUES (
         $1, $2, $3, $4,
         $5, $6, $7, $8, $9,
-        $10, $11, $12,
-        $13, $14, $15, $16
+        $10, $11,
+        $12, $13, $14, $15
       )
       ON CONFLICT (clerk_user_id) DO UPDATE SET
         first_name       = EXCLUDED.first_name,
@@ -85,7 +108,7 @@ router.post("/", async (req, res) => {
         industry         = EXCLUDED.industry,
         graduation_year  = EXCLUDED.graduation_year,
         experience_years = EXCLUDED.experience_years,
-        hourly_rate      = EXCLUDED.hourly_rate,
+        /* hourly_rate    = EXCLUDED.hourly_rate, */   -- removed
         skills           = EXCLUDED.skills,
         website          = EXCLUDED.website,
         linkedin_url     = EXCLUDED.linkedin_url,
@@ -93,10 +116,22 @@ router.post("/", async (req, res) => {
         updated_at       = now()
       `,
       [
-        clerkUserId, firstName, lastName, role,
-        college, department, semester, company, industry,
-        graduationYear, experienceYears, hourlyRate,
-        skills, website, linkedinUrl, profileImage
+        clerkUserId,
+        firstName,
+        lastName,
+        role,
+        college,
+        department,
+        semester,
+        company,
+        industry,
+        graduationYear,
+        experienceYears,
+        /* hourlyRate, */         // removed from parameters
+        skills,
+        website,
+        linkedinUrl,
+        profileImage,
       ]
     );
     res.json({ success: true });
@@ -106,7 +141,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 4) Toggle availability
+// 4) Toggle availability (no changes needed here)
 router.patch("/:clerkUserId/availability", async (req, res) => {
   const { clerkUserId } = req.params;
   const { is_available } = req.body;
