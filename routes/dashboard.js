@@ -1,5 +1,4 @@
 // alumni-connect-backend/routes/dashboard.js
-
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
@@ -16,78 +15,79 @@ async function lookupProfile(clerkUserId) {
   return rows[0].id;
 }
 
-// GET /dashboard/alumni/overview/:clerkUserId
-// Returns totalSessions, totalStudents, totalServices, earnings, unreadMessages
-router.get("/alumni/overview/:clerkUserId", async (req, res) => {
+// … (keep the existing alumni/overview handler above) …
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATED: GET /dashboard/student/overview/:clerkUserId
+// Returns totalSessions, pastSessions, unreadMessages, questionsAsked, answersReceived
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/student/overview/:clerkUserId", async (req, res) => {
   try {
     const { clerkUserId } = req.params;
-    // 1. Find internal alumni ID
-    const alumniId = await lookupProfile(clerkUserId);
+    // 1. Find internal student ID
+    const studentId = await lookupProfile(clerkUserId);
 
-    // 2. totalSessions: count all bookings where alumni_id = alumniId
+    // 2. totalSessions: total bookings where student_id = studentId
     const totalQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM bookings
-        WHERE alumni_id = $1`,
-      [alumniId]
+        WHERE student_id = $1`,
+      [studentId]
     );
     const totalSessions = parseInt(totalQ.rows[0].cnt, 10);
 
-    // 3. totalStudents: distinct count of student_id for this alumni
-    const studentsQ = await pool.query(
-      `SELECT COUNT(DISTINCT student_id) AS cnt
-         FROM bookings
-        WHERE alumni_id = $1`,
-      [alumniId]
-    );
-    const totalStudents = parseInt(studentsQ.rows[0].cnt, 10);
-
-    // 4. totalServices: count of services offered by this alumni
-    const servicesQ = await pool.query(
+    // 3. pastSessions: bookings where booking_date < today
+    const pastQ = await pool.query(
       `SELECT COUNT(*) AS cnt
-         FROM services
-        WHERE alumni_id = $1`,
-      [alumniId]
+         FROM bookings
+        WHERE student_id = $1
+          AND booking_date < CURRENT_DATE`,
+      [studentId]
     );
-    const totalServices = parseInt(servicesQ.rows[0].cnt, 10);
+    const pastSessions = parseInt(pastQ.rows[0].cnt, 10);
 
-    // 5. earnings: sum(rate) for all sessions this alumni has had
-    const earningsQ = await pool.query(
-      `
-      SELECT COALESCE(SUM(s.rate), 0) AS total_earned
-        FROM bookings b
-        JOIN services s ON s.id = b.service_id
-       WHERE b.alumni_id = $1
-      `,
-      [alumniId]
-    );
-    const earnings = parseFloat(earningsQ.rows[0].total_earned) || 0;
-
-    // 6. unreadMessages: count messages where receiver_id = alumniId AND is_read = FALSE
+    // 4. unreadMessages: messages where receiver_id = studentId AND is_read = FALSE
     const unreadQ = await pool.query(
-      `
-      SELECT COUNT(*) AS cnt
-        FROM messages
-       WHERE receiver_id = $1
-         AND is_read = FALSE
-      `,
-      [alumniId]
+      `SELECT COUNT(*) AS cnt
+         FROM messages
+        WHERE receiver_id = $1
+          AND is_read = FALSE`,
+      [studentId]
     );
     const unreadMessages = parseInt(unreadQ.rows[0].cnt, 10);
 
-    // Respond with all five stats
+    // 5. questionsAsked: count of questions where asked_by = studentId
+    const askedQ = await pool.query(
+      `SELECT COUNT(*) AS cnt
+         FROM questions
+        WHERE asked_by = $1`,
+      [studentId]
+    );
+    const questionsAsked = parseInt(askedQ.rows[0].cnt, 10);
+
+    // 6. answersReceived: answers to any question asked by this student
+    const answersQ = await pool.query(
+      `SELECT COUNT(*) AS cnt
+         FROM answers a
+         JOIN questions q ON q.id = a.question_id
+        WHERE q.asked_by = $1`,
+      [studentId]
+    );
+    const answersReceived = parseInt(answersQ.rows[0].cnt, 10);
+
+    // Respond with the five stats (upcomingSessions removed)
     res.json({
       success: true,
       stats: {
         totalSessions,
-        totalStudents,
-        totalServices,
-        earnings,
+        pastSessions,
         unreadMessages,
+        questionsAsked,
+        answersReceived,
       },
     });
   } catch (err) {
-    console.error("GET /dashboard/alumni/overview error:", err);
+    console.error("GET /dashboard/student/overview error:", err);
     res.status(500).json({ success: false, error: "Database error" });
   }
 });
