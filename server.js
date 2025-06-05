@@ -1,21 +1,22 @@
-//alumni-connec-backend/server.js
+// alumni-connect-backend/server.js
 const express = require("express");
-const cors = require("cors");
-const http = require("http");
+const cors    = require("cors");
+const http    = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
 
-const profileRoutes = require("./routes/profiles");
-const alumniRoutes = require("./routes/alumni");
-const qnaRoutes = require("./routes/qna");
-const messageRoutes = require("./routes/messages");
-const servicesRoutes = require("./routes/services");
-const bookingRoutes = require("./routes/bookings");
-const pool = require("./db");
+const profileRoutes   = require("./routes/profiles");
+const alumniRoutes    = require("./routes/alumni");
+const dashboardRoutes = require("./routes/dashboard");      // ← NEW
+const qnaRoutes       = require("./routes/qna");
+const messageRoutes   = require("./routes/messages");
+const servicesRoutes  = require("./routes/services");
+const bookingRoutes   = require("./routes/bookings");
+const pool            = require("./db");
 
-const app = express();
+const app    = express();
 const server = http.createServer(app);
-const io = new Server(server, {
+const io     = new Server(server, {
   cors: { origin: process.env.FRONTEND_URL },
 });
 
@@ -25,6 +26,7 @@ app.use(express.json());
 // REST endpoints
 app.use("/profiles", profileRoutes);
 app.use("/alumni", alumniRoutes);
+app.use("/dashboard", dashboardRoutes);   // ← NEW MOUNT POINT
 app.use("/qna", qnaRoutes);
 app.use("/messages", messageRoutes);
 app.use("/services", servicesRoutes);
@@ -42,7 +44,7 @@ io.on("connection", (socket) => {
     "send_message",
     async ({ roomId, myClerkId, peerClerkId, content }) => {
       try {
-        const meQ = await pool.query(
+        const meQ   = await pool.query(
           "SELECT id FROM profiles WHERE clerk_user_id = $1",
           [myClerkId]
         );
@@ -52,14 +54,17 @@ io.on("connection", (socket) => {
         );
         if (!meQ.rows.length || !peerQ.rows.length) return;
         const ins = await pool.query(
-          `INSERT INTO messages (sender_id, receiver_id, content)
-           VALUES ($1, $2, $3) RETURNING sent_at`,
+          `
+          INSERT INTO messages (sender_id, receiver_id, content)
+          VALUES ($1, $2, $3)
+          RETURNING sent_at
+          `,
           [meQ.rows[0].id, peerQ.rows[0].id, content]
         );
         io.to(roomId).emit("receive_message", {
           roomId,
-          sender: myClerkId,
-          body: content,
+          sender:    myClerkId,
+          body:      content,
           timestamp: ins.rows[0].sent_at,
         });
       } catch (err) {
