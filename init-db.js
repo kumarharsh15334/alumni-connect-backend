@@ -1,3 +1,4 @@
+// alumni-connect-backend/init-db.js
 require("dotenv").config();
 const pool = require("./db");
 
@@ -8,7 +9,7 @@ async function migrate() {
   console.log("🛠️  Creating extension and tables…");
   await pool.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
-  // Profiles
+  // Profiles (updated to include dark_mode DEFAULT FALSE)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS profiles (
       id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -30,6 +31,7 @@ async function migrate() {
       hourly_rate      NUMERIC,
       rating           NUMERIC,
       is_available     BOOLEAN      NOT NULL DEFAULT TRUE,
+      dark_mode        BOOLEAN      NOT NULL DEFAULT FALSE,   -- new column
       created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
       updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
     );
@@ -97,7 +99,7 @@ async function migrate() {
   await pool.end();
 }
 
-migrate().catch(err => {
+migrate().catch((err) => {
   console.error("Migration failed:", err);
   process.exit(1);
 });

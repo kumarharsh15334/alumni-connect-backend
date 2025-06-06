@@ -7,7 +7,7 @@ require("dotenv").config();
 
 const profileRoutes   = require("./routes/profiles");
 const alumniRoutes    = require("./routes/alumni");
-const dashboardRoutes = require("./routes/dashboard"); // ← ensure this is here
+const dashboardRoutes = require("./routes/dashboard");
 const qnaRoutes       = require("./routes/qna");
 const messageRoutes   = require("./routes/messages");
 const servicesRoutes  = require("./routes/services");
@@ -20,19 +20,20 @@ const io     = new Server(server, {
   cors: { origin: process.env.FRONTEND_URL },
 });
 
+// Basic CORS + JSON parsing
 app.use(cors({ origin: process.env.FRONTEND_URL }));
 app.use(express.json());
 
-// Mount all REST routes
-app.use("/profiles", profileRoutes);
+// ─── MOUNT REST ROUTES ────────────────────────────────────────────────────────
+app.use("/profiles", profileRoutes);      // ← includes GET, POST, PATCH /settings
 app.use("/alumni", alumniRoutes);
-app.use("/dashboard", dashboardRoutes);   // ← student & alumni overview both live here
+app.use("/dashboard", dashboardRoutes);
 app.use("/qna", qnaRoutes);
 app.use("/messages", messageRoutes);
 app.use("/services", servicesRoutes);
 app.use("/bookings", bookingRoutes);
 
-// Real-time chat (unchanged)
+// ─── SOCKET.IO (unchanged) ────────────────────────────────────────────────────
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 

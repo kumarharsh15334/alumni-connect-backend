@@ -1,4 +1,4 @@
-// ---- alumni-connect-backend/routes/profiles.js ----
+// alumni-connect-backend/routes/profiles.js
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
@@ -34,6 +34,7 @@ router.get("/search", async (req, res) => {
 });
 
 // 2) Get one profile by clerkUserId
+//    GET /profiles/:clerkUserId
 router.get("/:clerkUserId", async (req, res) => {
   const { clerkUserId } = req.params;
   try {
@@ -51,7 +52,7 @@ router.get("/:clerkUserId", async (req, res) => {
   }
 });
 
-// 3) Create or update a profile (DROP hourly_rate)
+// 3) Create or update a profile (now includes dark_mode)
 router.post("/", async (req, res) => {
   const {
     clerkUserId,
@@ -65,11 +66,11 @@ router.post("/", async (req, res) => {
     industry,
     graduationYear,
     experienceYears,
-    // <-- hourlyRate removed here
     skills,
     website,
     linkedinUrl,
     profileImage,
+    darkMode,        // new field
   } = req.body;
 
   try {
@@ -90,12 +91,14 @@ router.post("/", async (req, res) => {
         skills,
         website,
         linkedin_url,
-        profile_image
+        profile_image,
+        dark_mode            -- new column
       ) VALUES (
         $1, $2, $3, $4,
         $5, $6, $7, $8, $9,
         $10, $11,
-        $12, $13, $14, $15
+        $12, $13, $14, $15,
+        $16
       )
       ON CONFLICT (clerk_user_id) DO UPDATE SET
         first_name       = EXCLUDED.first_name,
@@ -108,11 +111,11 @@ router.post("/", async (req, res) => {
         industry         = EXCLUDED.industry,
         graduation_year  = EXCLUDED.graduation_year,
         experience_years = EXCLUDED.experience_years,
-        /* hourly_rate    = EXCLUDED.hourly_rate, */   -- removed
         skills           = EXCLUDED.skills,
         website          = EXCLUDED.website,
         linkedin_url     = EXCLUDED.linkedin_url,
         profile_image    = EXCLUDED.profile_image,
+        dark_mode        = EXCLUDED.dark_mode,   -- update on conflict
         updated_at       = now()
       `,
       [
@@ -127,11 +130,11 @@ router.post("/", async (req, res) => {
         industry,
         graduationYear,
         experienceYears,
-        /* hourlyRate, */         // removed from parameters
         skills,
         website,
         linkedinUrl,
         profileImage,
+        darkMode === true,   // coerce to boolean
       ]
     );
     res.json({ success: true });
@@ -141,7 +144,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 4) Toggle availability (no changes needed here)
+// 4) Toggle availability (unchanged)
 router.patch("/:clerkUserId/availability", async (req, res) => {
   const { clerkUserId } = req.params;
   const { is_available } = req.body;
@@ -153,6 +156,26 @@ router.patch("/:clerkUserId/availability", async (req, res) => {
     res.json({ success: true, is_available });
   } catch (err) {
     console.error("PATCH /profiles/:id/availability error:", err);
+    res.status(500).json({ success: false, error: "Database error" });
+  }
+});
+
+// 5) Toggle dark mode (NEW)
+//    PATCH /profiles/:clerkUserId/dark-mode
+router.patch("/:clerkUserId/dark-mode", async (req, res) => {
+  const { clerkUserId } = req.params;
+  const { dark_mode } = req.body; // expected boolean
+  if (dark_mode === undefined) {
+    return res.status(400).json({ success: false, error: "Missing dark_mode" });
+  }
+  try {
+    await pool.query(
+      `UPDATE profiles SET dark_mode = $1 WHERE clerk_user_id = $2`,
+      [dark_mode, clerkUserId]
+    );
+    res.json({ success: true, dark_mode });
+  } catch (err) {
+    console.error("PATCH /profiles/:id/dark-mode error:", err);
     res.status(500).json({ success: false, error: "Database error" });
   }
 });
