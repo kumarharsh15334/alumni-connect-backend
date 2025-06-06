@@ -7,7 +7,7 @@ require("dotenv").config();
 
 const profileRoutes   = require("./routes/profiles");
 const alumniRoutes    = require("./routes/alumni");
-const dashboardRoutes = require("./routes/dashboard");      // ← NEW
+const dashboardRoutes = require("./routes/dashboard"); // ← ensure this is here
 const qnaRoutes       = require("./routes/qna");
 const messageRoutes   = require("./routes/messages");
 const servicesRoutes  = require("./routes/services");
@@ -23,16 +23,16 @@ const io     = new Server(server, {
 app.use(cors({ origin: process.env.FRONTEND_URL }));
 app.use(express.json());
 
-// REST endpoints
+// Mount all REST routes
 app.use("/profiles", profileRoutes);
 app.use("/alumni", alumniRoutes);
-app.use("/dashboard", dashboardRoutes);   // ← NEW MOUNT POINT
+app.use("/dashboard", dashboardRoutes);   // ← student & alumni overview both live here
 app.use("/qna", qnaRoutes);
 app.use("/messages", messageRoutes);
 app.use("/services", servicesRoutes);
 app.use("/bookings", bookingRoutes);
 
-// Real-time chat
+// Real-time chat (unchanged)
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 
@@ -53,12 +53,10 @@ io.on("connection", (socket) => {
           [peerClerkId]
         );
         if (!meQ.rows.length || !peerQ.rows.length) return;
+
         const ins = await pool.query(
-          `
-          INSERT INTO messages (sender_id, receiver_id, content)
-          VALUES ($1, $2, $3)
-          RETURNING sent_at
-          `,
+          `INSERT INTO messages (sender_id, receiver_id, content)
+           VALUES ($1, $2, $3) RETURNING sent_at`,
           [meQ.rows[0].id, peerQ.rows[0].id, content]
         );
         io.to(roomId).emit("receive_message", {
