@@ -1,4 +1,4 @@
-// alumni-connect/src/lib/api.ts
+// alumni-connect-backend/src/lib/api.ts
 
 export const API =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
