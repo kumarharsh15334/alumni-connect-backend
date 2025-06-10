@@ -1,15 +1,15 @@
-// alumni-connect-backend/routes/alumni.js
+// File: alumni-connect-backend/routes/alumni.js
+
 const express = require("express");
-const pool = require("../db");
-const router = express.Router();
+const pool    = require("../db");
+const router  = express.Router();
 
 // GET /alumni?search=term
 router.get("/", async (req, res) => {
   const { search } = req.query;
+  const term = `%${search || ""}%`;
 
   try {
-    // We only use $1 for all ILIKE comparisons – so pass [term] once.
-    const term = `%${search || ""}%`;
     const { rows } = await pool.query(
       `
       SELECT
@@ -31,10 +31,15 @@ router.get("/", async (req, res) => {
           OR company    ILIKE $1
           OR college    ILIKE $1
           OR industry   ILIKE $1
+          OR EXISTS (
+               SELECT 1
+               FROM unnest(coalesce(skills, '{}')) AS s
+               WHERE s ILIKE $1
+             )
         )
       ORDER BY last_name;
       `,
-      [term]   // only one parameter here
+      [term]
     );
 
     res.json({ success: true, alumni: rows });

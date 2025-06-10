@@ -1,10 +1,13 @@
 // alumni-connect-backend/routes/profiles.js
+
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
 
-// 1) Search users (students or alumni) by name/company/college
-//    GET /profiles/search?q=term
+/**
+ * 1) Search users (students or alumni) by name/company/college
+ *    GET /profiles/search?q=term
+ */
 router.get("/search", async (req, res) => {
   const { q } = req.query;
   try {
@@ -15,7 +18,7 @@ router.get("/search", async (req, res) => {
         clerk_user_id    AS id,
         first_name || ' ' || last_name AS name,
         role,
-        profile_image    AS profileImageUrl
+        profile_image    AS "profileImageUrl"
       FROM profiles
       WHERE first_name ILIKE $1
          OR last_name  ILIKE $1
@@ -33,8 +36,10 @@ router.get("/search", async (req, res) => {
   }
 });
 
-// 2) Get one profile by clerkUserId
-//    GET /profiles/:clerkUserId
+/**
+ * 2) Get one profile by Clerk User ID
+ *    GET /profiles/:clerkUserId
+ */
 router.get("/:clerkUserId", async (req, res) => {
   const { clerkUserId } = req.params;
   try {
@@ -52,7 +57,11 @@ router.get("/:clerkUserId", async (req, res) => {
   }
 });
 
-// 3) Create or update a profile (now includes dark_mode)
+/**
+ * 3) Create or update a profile
+ *    POST /profiles
+ *    Body must include all fields; dark_mode is expected as boolean
+ */
 router.post("/", async (req, res) => {
   const {
     clerkUserId,
@@ -70,7 +79,7 @@ router.post("/", async (req, res) => {
     website,
     linkedinUrl,
     profileImage,
-    darkMode,        // new field
+    dark_mode,        // <-- pull from body
   } = req.body;
 
   try {
@@ -92,13 +101,11 @@ router.post("/", async (req, res) => {
         website,
         linkedin_url,
         profile_image,
-        dark_mode            -- new column
+        dark_mode
       ) VALUES (
-        $1, $2, $3, $4,
-        $5, $6, $7, $8, $9,
-        $10, $11,
-        $12, $13, $14, $15,
-        $16
+        $1,$2,$3,$4,
+        $5,$6,$7,$8,$9,
+        $10,$11,$12,$13,$14,$15,$16
       )
       ON CONFLICT (clerk_user_id) DO UPDATE SET
         first_name       = EXCLUDED.first_name,
@@ -115,7 +122,7 @@ router.post("/", async (req, res) => {
         website          = EXCLUDED.website,
         linkedin_url     = EXCLUDED.linkedin_url,
         profile_image    = EXCLUDED.profile_image,
-        dark_mode        = EXCLUDED.dark_mode,   -- update on conflict
+        dark_mode        = EXCLUDED.dark_mode,
         updated_at       = now()
       `,
       [
@@ -134,7 +141,7 @@ router.post("/", async (req, res) => {
         website,
         linkedinUrl,
         profileImage,
-        darkMode === true,   // coerce to boolean
+        Boolean(dark_mode),  // coerce to boolean
       ]
     );
     res.json({ success: true });
@@ -144,7 +151,10 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 4) Toggle availability (unchanged)
+/**
+ * 4) Toggle availability
+ *    PATCH /profiles/:clerkUserId/availability
+ */
 router.patch("/:clerkUserId/availability", async (req, res) => {
   const { clerkUserId } = req.params;
   const { is_available } = req.body;
@@ -160,13 +170,17 @@ router.patch("/:clerkUserId/availability", async (req, res) => {
   }
 });
 
-// 5) Toggle dark mode (NEW)
-//    PATCH /profiles/:clerkUserId/dark-mode
+/**
+ * 5) Toggle dark mode
+ *    PATCH /profiles/:clerkUserId/dark-mode
+ */
 router.patch("/:clerkUserId/dark-mode", async (req, res) => {
   const { clerkUserId } = req.params;
-  const { dark_mode } = req.body; // expected boolean
-  if (dark_mode === undefined) {
-    return res.status(400).json({ success: false, error: "Missing dark_mode" });
+  const { dark_mode } = req.body;
+  if (typeof dark_mode !== "boolean") {
+    return res
+      .status(400)
+      .json({ success: false, error: "Missing or invalid dark_mode" });
   }
   try {
     await pool.query(
