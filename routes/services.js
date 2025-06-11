@@ -14,14 +14,20 @@ async function lookupProfile(clerkUserId) {
 
 // GET /services/alumni/:clerkUserId
 router.get("/alumni/:clerkUserId", async (req, res) => {
-  console.log("SERVICES for:", req.params.clerkUserId);
   try {
     const alumniId = await lookupProfile(req.params.clerkUserId);
     const { rows } = await pool.query(
-      `SELECT id, title, description, rate
-         FROM services
-        WHERE alumni_id = $1
-        ORDER BY created_at DESC`,
+      `
+      SELECT
+        id,
+        title,
+        description,
+        rate,
+        duration_months AS session_time_months
+      FROM services
+      WHERE alumni_id = $1
+      ORDER BY created_at DESC
+      `,
       [alumniId]
     );
     res.json({ success: true, services: rows });
@@ -33,17 +39,20 @@ router.get("/alumni/:clerkUserId", async (req, res) => {
 
 // POST /services/alumni/:clerkUserId
 router.post("/alumni/:clerkUserId", async (req, res) => {
-  const { title, description, rate } = req.body;
-  if (!title || rate == null) {
+  const { title, description, rate, duration_months } = req.body;
+  if (!title || rate == null || duration_months == null) {
     return res.status(400).json({ success: false, error: "Missing fields" });
   }
   try {
     const alumniId = await lookupProfile(req.params.clerkUserId);
     const { rows } = await pool.query(
-      `INSERT INTO services (alumni_id, title, description, rate)
-       VALUES ($1,$2,$3,$4)
-       RETURNING id, title, description, rate`,
-      [alumniId, title, description || "", rate]
+      `
+      INSERT INTO services
+        (alumni_id, title, description, rate, duration_months)
+      VALUES ($1,$2,$3,$4,$5)
+      RETURNING id, title, description, rate, duration_months AS session_time_months
+      `,
+      [alumniId, title, description || "", rate, duration_months]
     );
     res.json({ success: true, services: rows });
   } catch (err) {
@@ -54,7 +63,7 @@ router.post("/alumni/:clerkUserId", async (req, res) => {
 
 // PATCH /services/:id
 router.patch("/:id", async (req, res) => {
-  const { title, description, rate } = req.body;
+  const { title, description, rate, duration_months } = req.body;
   const sets = [];
   const vals = [];
   let idx = 1;
@@ -70,16 +79,22 @@ router.patch("/:id", async (req, res) => {
     sets.push(`rate = $${idx++}`);
     vals.push(rate);
   }
+  if (duration_months !== undefined) {
+    sets.push(`duration_months = $${idx++}`);
+    vals.push(duration_months);
+  }
   if (!sets.length) {
     return res.status(400).json({ success: false, error: "Nothing to update" });
   }
   vals.push(req.params.id);
   try {
     const { rows } = await pool.query(
-      `UPDATE services
-         SET ${sets.join(", ")}, updated_at = now()
-       WHERE id = $${idx}
-       RETURNING id, title, description, rate`,
+      `
+      UPDATE services
+      SET ${sets.join(", ")}, updated_at = now()
+      WHERE id = $${idx}
+      RETURNING id, title, description, rate, duration_months AS session_time_months
+      `,
       vals
     );
     res.json({ success: true, services: rows });

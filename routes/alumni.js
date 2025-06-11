@@ -1,4 +1,4 @@
-// File: alumni-connect-backend/routes/alumni.js
+//alumni-connect-backend/routes/alumni.js
 
 const express = require("express");
 const pool    = require("../db");
