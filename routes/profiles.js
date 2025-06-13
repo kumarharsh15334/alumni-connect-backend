@@ -5,13 +5,29 @@ const pool    = require("../db");
 const router  = express.Router();
 
 /**
+ * Helper: lookup internal profile ID by Clerk user ID
+ */
+async function lookupProfileId(clerkUserId) {
+  const { rows } = await pool.query(
+    `SELECT id FROM profiles WHERE clerk_user_id = $1`,
+    [clerkUserId]
+  );
+  if (!rows.length) {
+    const err = new Error("Profile not found for Clerk ID: " + clerkUserId);
+    err.status = 404;
+    throw err;
+  }
+  return rows[0].id;
+}
+
+/**
  * 1) Search users (students or alumni) by name/company/college
  *    GET /profiles/search?q=term
  */
 router.get("/search", async (req, res) => {
   const { q } = req.query;
+  const term = `%${q || ""}%`;
   try {
-    const term = `%${q || ""}%`;
     const { rows } = await pool.query(
       `
       SELECT
@@ -41,8 +57,8 @@ router.get("/search", async (req, res) => {
  *    GET /profiles/:clerkUserId
  */
 router.get("/:clerkUserId", async (req, res) => {
-  const { clerkUserId } = req.params;
   try {
+    const { clerkUserId } = req.params;
     const { rows } = await pool.query(
       `SELECT * FROM profiles WHERE clerk_user_id = $1`,
       [clerkUserId]
@@ -52,15 +68,14 @@ router.get("/:clerkUserId", async (req, res) => {
     }
     res.json({ success: true, profile: rows[0] });
   } catch (err) {
-    console.error("GET /profiles/:id error:", err);
-    res.status(500).json({ success: false, error: "Database error" });
+    console.error("GET /profiles/:clerkUserId error:", err);
+    res.status(err.status || 500).json({ success: false, error: err.message || "Database error" });
   }
 });
 
 /**
  * 3) Create or update a profile
  *    POST /profiles
- *    Body must include all fields; dark_mode is expected as boolean
  */
 router.post("/", async (req, res) => {
   const {
@@ -79,7 +94,7 @@ router.post("/", async (req, res) => {
     website,
     linkedinUrl,
     profileImage,
-    dark_mode,        // <-- pull from body
+    dark_mode,
   } = req.body;
 
   try {
@@ -141,7 +156,7 @@ router.post("/", async (req, res) => {
         website,
         linkedinUrl,
         profileImage,
-        Boolean(dark_mode),  // coerce to boolean
+        Boolean(dark_mode),
       ]
     );
     res.json({ success: true });
@@ -165,7 +180,7 @@ router.patch("/:clerkUserId/availability", async (req, res) => {
     );
     res.json({ success: true, is_available });
   } catch (err) {
-    console.error("PATCH /profiles/:id/availability error:", err);
+    console.error("PATCH /profiles/:clerkUserId/availability error:", err);
     res.status(500).json({ success: false, error: "Database error" });
   }
 });
@@ -189,8 +204,65 @@ router.patch("/:clerkUserId/dark-mode", async (req, res) => {
     );
     res.json({ success: true, dark_mode });
   } catch (err) {
-    console.error("PATCH /profiles/:id/dark-mode error:", err);
+    console.error("PATCH /profiles/:clerkUserId/dark-mode error:", err);
     res.status(500).json({ success: false, error: "Database error" });
+  }
+});
+
+/**
+ * 6) Delete a profile (and cascade all related data)
+ *    DELETE /profiles/:clerkUserId
+ */
+router.delete("/:clerkUserId", async (req, res) => {
+  const { clerkUserId } = req.params;
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // 1) Find internal profile PK
+    const profileId = await lookupProfileId(clerkUserId);
+
+    // 2) Remove answers & questions
+    await client.query(`DELETE FROM answers   WHERE answered_by = $1`, [profileId]);
+    await client.query(`DELETE FROM questions WHERE asked_by     = $1`, [profileId]);
+
+    // 3) Remove all messages to/from this user
+    await client.query(
+      `DELETE FROM messages
+         WHERE sender_id   = $1
+            OR receiver_id = $1`,
+      [profileId]
+    );
+
+    // 4) Remove bookings as student or alumni
+    await client.query(
+      `DELETE FROM bookings
+         WHERE student_id = $1
+            OR alumni_id  = $1`,
+      [profileId]
+    );
+
+    // 5) Remove any services offered by this alumni
+    await client.query(
+      `DELETE FROM services WHERE alumni_id = $1`,
+      [profileId]
+    );
+
+    // 6) Finally delete the profile row
+    await client.query(
+      `DELETE FROM profiles WHERE id = $1`,
+      [profileId]
+    );
+
+    await client.query("COMMIT");
+    res.json({ success: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("DELETE /profiles/:clerkUserId error:", err);
+    res.status(err.status || 500).json({ success: false, error: err.message || "Database error" });
+  } finally {
+    client.release();
   }
 });
 
