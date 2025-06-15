@@ -1,5 +1,4 @@
-// alumni-connect-backend/routes/bookings.js
-
+//alumni-connect-backend/routes/bookings.js
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
@@ -41,33 +40,26 @@ router.post("/", async (req, res) => {
       `SELECT rate, duration_months FROM services WHERE id = $1`,
       [serviceId]
     );
-    if (!svcQ.rows.length) {
-      throw new Error("Service not found");
-    }
-    const { rate, duration_months } = svcQ.rows[0];
+    if (!svcQ.rows.length) throw new Error("Service not found");
+    const { rate } = svcQ.rows[0];
 
     // 3) Check student balance
-    const balQ = await client.query(
-      `SELECT balance FROM profiles WHERE id = $1`,
-      [studentId]
-    );
+    const balQ       = await client.query(`SELECT balance FROM profiles WHERE id = $1`, [studentId]);
     const studentBal = parseFloat(balQ.rows[0].balance);
     if (studentBal < parseFloat(rate)) {
       await client.query("ROLLBACK");
-      return res
-        .status(400)
-        .json({ success: false, error: "Insufficient balance" });
+      return res.status(400).json({ success: false, error: "Insufficient balance" });
     }
 
     // 4) Update wallets
-    await client.query(
-      `UPDATE profiles SET balance = balance - $1 WHERE id = $2`,
-      [rate, studentId]
-    );
-    await client.query(
-      `UPDATE profiles SET balance = balance + $1 WHERE id = $2`,
-      [rate, alumniId]
-    );
+    await client.query(`UPDATE profiles SET balance = balance - $1 WHERE id = $2`, [
+      rate,
+      studentId,
+    ]);
+    await client.query(`UPDATE profiles SET balance = balance + $1 WHERE id = $2`, [
+      rate,
+      alumniId,
+    ]);
 
     // 5) Insert booking and compute validity_date in SQL
     const insQ = await client.query(
@@ -106,10 +98,9 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * GET /bookings/alumni/:alumniClerkId
- *  – List all bookings for an alumni, including sessionDurationMonths & validityDate
- */
+// ────────────────────────────────
+// GET ongoing bookings for alumni
+// ────────────────────────────────
 router.get("/alumni/:alumniClerkId", async (req, res) => {
   try {
     const alumniId = await lookupProfile(req.params.alumniClerkId);
@@ -128,6 +119,7 @@ router.get("/alumni/:alumniClerkId", async (req, res) => {
       JOIN services s  ON s.id   = b.service_id
       JOIN profiles st ON st.id  = b.student_id
       WHERE b.alumni_id = $1
+        AND b.validity_date >= CURRENT_DATE
       ORDER BY b.booking_date DESC, b.booking_time DESC
       `,
       [alumniId]
@@ -139,10 +131,9 @@ router.get("/alumni/:alumniClerkId", async (req, res) => {
   }
 });
 
-/**
- * GET /bookings/student/:studentClerkId
- *  – List all bookings for a student, including sessionDurationMonths & validityDate
- */
+// ────────────────────────────────
+// GET ongoing bookings for student
+// ────────────────────────────────
 router.get("/student/:studentClerkId", async (req, res) => {
   try {
     const studentId = await lookupProfile(req.params.studentClerkId);
@@ -161,6 +152,7 @@ router.get("/student/:studentClerkId", async (req, res) => {
       JOIN services s   ON s.id   = b.service_id
       JOIN profiles pr  ON pr.id  = b.alumni_id
       WHERE b.student_id = $1
+        AND b.validity_date >= CURRENT_DATE
       ORDER BY b.booking_date DESC, b.booking_time DESC
       `,
       [studentId]

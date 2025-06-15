@@ -1,4 +1,4 @@
-// alumni-connect-backend/routes/dashboard.js
+//alumni-connect-backend/routes/dashboard.js
 const express = require("express");
 const pool    = require("../db");
 const router  = express.Router();
@@ -6,9 +6,7 @@ const router  = express.Router();
 // Helper: lookup a Clerk User ID → internal profile ID
 async function lookupProfile(clerkUserId) {
   const { rows } = await pool.query(
-    `SELECT id
-       FROM profiles
-      WHERE clerk_user_id = $1`,
+    `SELECT id FROM profiles WHERE clerk_user_id = $1`,
     [clerkUserId]
   );
   if (!rows.length) throw new Error("Profile not found for Clerk ID: " + clerkUserId);
@@ -17,23 +15,33 @@ async function lookupProfile(clerkUserId) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /dashboard/alumni/overview/:clerkUserId
-// Returns { totalSessions, totalStudents, totalServices, earnings, unreadMessages }
+// Returns { ongoingSessions, pastSessions, totalStudents, totalServices, earnings, unreadMessages }
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/alumni/overview/:clerkUserId", async (req, res) => {
   try {
-    const { clerkUserId } = req.params;
-    const alumniId = await lookupProfile(clerkUserId);
+    const alumniId = await lookupProfile(req.params.clerkUserId);
 
-    // totalSessions
-    const totalQ = await pool.query(
+    // ongoing sessions (validity ≥ today)
+    const ongoingQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM bookings
-        WHERE alumni_id = $1`,
+        WHERE alumni_id = $1
+          AND validity_date >= CURRENT_DATE`,
       [alumniId]
     );
-    const totalSessions = parseInt(totalQ.rows[0].cnt, 10);
+    const ongoingSessions = parseInt(ongoingQ.rows[0].cnt, 10);
 
-    // totalStudents (distinct)
+    // past sessions (validity < today)
+    const pastQ = await pool.query(
+      `SELECT COUNT(*) AS cnt
+         FROM bookings
+        WHERE alumni_id = $1
+          AND validity_date < CURRENT_DATE`,
+      [alumniId]
+    );
+    const pastSessions = parseInt(pastQ.rows[0].cnt, 10);
+
+    // total distinct students (all time)
     const studentsQ = await pool.query(
       `SELECT COUNT(DISTINCT student_id) AS cnt
          FROM bookings
@@ -42,7 +50,7 @@ router.get("/alumni/overview/:clerkUserId", async (req, res) => {
     );
     const totalStudents = parseInt(studentsQ.rows[0].cnt, 10);
 
-    // totalServices
+    // total services offered
     const servicesQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM services
@@ -51,7 +59,7 @@ router.get("/alumni/overview/:clerkUserId", async (req, res) => {
     );
     const totalServices = parseInt(servicesQ.rows[0].cnt, 10);
 
-    // earnings
+    // total earnings (all time)
     const earningsQ = await pool.query(
       `SELECT COALESCE(SUM(s.rate), 0) AS total_earned
          FROM bookings b
@@ -61,7 +69,7 @@ router.get("/alumni/overview/:clerkUserId", async (req, res) => {
     );
     const earnings = parseFloat(earningsQ.rows[0].total_earned) || 0;
 
-    // unreadMessages
+    // unread messages
     const unreadQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM messages
@@ -74,7 +82,8 @@ router.get("/alumni/overview/:clerkUserId", async (req, res) => {
     res.json({
       success: true,
       stats: {
-        totalSessions,
+        ongoingSessions,
+        pastSessions,
         totalStudents,
         totalServices,
         earnings,
@@ -89,33 +98,33 @@ router.get("/alumni/overview/:clerkUserId", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /dashboard/student/overview/:clerkUserId
-// Returns { totalSessions, pastSessions, unreadMessages, questionsAsked, answersReceived }
+// Returns { ongoingSessions, pastSessions, unreadMessages, questionsAsked, answersReceived }
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/student/overview/:clerkUserId", async (req, res) => {
   try {
-    const { clerkUserId } = req.params;
-    const studentId = await lookupProfile(clerkUserId);
+    const studentId = await lookupProfile(req.params.clerkUserId);
 
-    // totalSessions
-    const totalQ = await pool.query(
+    // ongoing sessions
+    const ongoingQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM bookings
-        WHERE student_id = $1`,
+        WHERE student_id = $1
+          AND validity_date >= CURRENT_DATE`,
       [studentId]
     );
-    const totalSessions = parseInt(totalQ.rows[0].cnt, 10);
+    const ongoingSessions = parseInt(ongoingQ.rows[0].cnt, 10);
 
-    // pastSessions (booking_date < today)
+    // past sessions
     const pastQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM bookings
         WHERE student_id = $1
-          AND booking_date < CURRENT_DATE`,
+          AND validity_date < CURRENT_DATE`,
       [studentId]
     );
     const pastSessions = parseInt(pastQ.rows[0].cnt, 10);
 
-    // unreadMessages
+    // unread messages
     const unreadQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM messages
@@ -125,7 +134,7 @@ router.get("/student/overview/:clerkUserId", async (req, res) => {
     );
     const unreadMessages = parseInt(unreadQ.rows[0].cnt, 10);
 
-    // questionsAsked
+    // questions asked
     const askedQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM questions
@@ -134,7 +143,7 @@ router.get("/student/overview/:clerkUserId", async (req, res) => {
     );
     const questionsAsked = parseInt(askedQ.rows[0].cnt, 10);
 
-    // answersReceived
+    // answers received
     const answersQ = await pool.query(
       `SELECT COUNT(*) AS cnt
          FROM answers a
@@ -147,7 +156,7 @@ router.get("/student/overview/:clerkUserId", async (req, res) => {
     res.json({
       success: true,
       stats: {
-        totalSessions,
+        ongoingSessions,
         pastSessions,
         unreadMessages,
         questionsAsked,
